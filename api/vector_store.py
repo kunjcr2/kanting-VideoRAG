@@ -27,6 +27,21 @@ class VectorStore:
         """Save data to JSON file"""
         with open(self.storage_path, 'w') as f:
             json.dump(self.data, f, indent=2)
+
+    def get_video_url(self, video_id: str) -> str:
+        """
+        Get original video URL for a given video_id
+        
+        Args:
+            video_id: Video identifier
+            
+        Returns:
+            Original video URL or None if not found
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT video_url FROM videos WHERE id = ?", (video_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None    
     
     def add_video(self, video_path: str, transcript: str) -> str:
         """

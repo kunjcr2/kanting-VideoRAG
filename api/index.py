@@ -6,7 +6,7 @@ import json
 from vector_store import VectorStore
 from clip_manager import ClipManager
 from video_downloader import VideoDownloader
-from main import store_transcript, query_and_extract_clip
+from main import store_transcript, query_and_extract_clip, get_transcript
 
 app = Flask(__name__)
 CORS(app)
@@ -21,11 +21,10 @@ def store_transcript_endpoint():
     """Store video and its transcript"""
     data = request.get_json()
     
-    transcript = data.get('transcript')
     video_url = data.get('video_url')
     
-    if not transcript or not video_url:
-        return jsonify({"error": "Transcript and video_url required"}), 400
+    if not video_url:
+        return jsonify({"error": "video_url required"}), 400
         
     # Download video from URL
     try:
@@ -33,6 +32,11 @@ def store_transcript_endpoint():
         video_path = downloader.download_video(video_url, video_name)
         if not video_path:
             return jsonify({"error": "Failed to download video"}), 400
+        
+        # Extract transcript from the downloaded video
+        transcript = get_transcript(video_path)
+        if not transcript:
+            return jsonify({"error": "Failed to extract transcript from video"}), 400
             
         # Store transcript with downloaded video path
         result = store_transcript(transcript, video_path, vector_store)

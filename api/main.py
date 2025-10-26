@@ -4,6 +4,9 @@ from typing import Dict, List
 from vector_store import VectorStore
 from clip_manager import ClipManager
 
+import whisper
+import torch
+
 def store_transcript(transcript: str, video_path: str, vector_store: VectorStore) -> Dict:
     """
     Store transcript in vector store
@@ -35,8 +38,6 @@ def store_transcript(transcript: str, video_path: str, vector_store: VectorStore
 
                 Transcript:
                 {transcript}
-
-                Please format your response as JSON with these keys: title, summary, key_points (array), timestamps (array), takeaways (array)
         """
     
     message = client.messages.create(
@@ -63,20 +64,18 @@ def query_and_extract_clip(
     top_k: int = 10
 ) -> Dict:
     """
-    Query vector store and extract relevant video clip
+    Query vector store and return video URL with timestamps
     
     Args:
         query: User query
         vector_store: VectorStore instance  
         clip_manager: ClipManager instance
-        output_dir: Output directory for clips
+        output_dir: Output directory for clips (unused, kept for compatibility)
         top_k: Number of top segments to consider
         
     Returns:
-        Dict with answer, clip info, and segments
+        Dict with answer, video URL with timestamps, and segments
     """
-    os.makedirs(output_dir, exist_ok=True)
-    
     # Step 1: Search for relevant segments
     print(f"Searching for: '{query}'")
     segments = vector_store.search(query, top_k=top_k)
@@ -84,7 +83,7 @@ def query_and_extract_clip(
     if not segments:
         return {
             "answer": "No relevant content found.",
-            "clip_path": None,
+            "video_url": None,
             "error": "No segments found"
         }
     
@@ -105,34 +104,36 @@ def query_and_extract_clip(
     # Step 3: Find clip boundaries
     clip_start, clip_end = clip_manager.find_clip_bounds(best_segments)
     
-    # Step 4: Get video path and extract clip
-    video_path = vector_store.get_video_path(best_video_id)
-    clip_filename = f"clip_{clip_start:.1f}_{clip_end:.1f}_{random.randint(1000,9999)}.mp4"
-    clip_path = os.path.join(output_dir, clip_filename)
+    # Step 4: Get original video URL from vector store
+    video_url = vector_store.get_video_url(best_video_id)
     
-    success = clip_manager.extract_clip(video_path, clip_start, clip_end, clip_path)
-    
-    if not success:
+    if not video_url:
         return {
-            "answer": "Found relevant content but failed to extract clip.",
+            "answer": "Found relevant content but video URL not available.",
             "segments": best_segments,
-            "clip_path": None,
-            "error": "Clip extraction failed"
+            "video_url": None,
+            "error": "Video URL not found"
         }
     
-    # Step 5: Generate answer from segments
+    # Step 5: Create timestamped URL
+    # Format: original_url?t=start (or #t=start,end for some platforms)
+    # You can customize this based on your video platform
+    timestamped_url = f"{video_url}?t={int(clip_start)}"
+    # Alternative format with start and end: f"{video_url}#t={int(clip_start)},{int(clip_end)}"
+    
+    # Step 6: Generate answer from segments
     answer_text = generate_answer_from_segments(query, best_segments)
     
     return {
         "answer": answer_text,
-        "clip_path": clip_path,
+        "video_url": timestamped_url,
+        "original_video_url": video_url,
         "clip_start": clip_start,
         "clip_end": clip_end,
         "video_id": best_video_id,
         "segments_used": len(best_segments),
         "max_similarity": max(seg["similarity"] for seg in best_segments)
     }
-
 def generate_answer_from_segments(query: str, segments: List[Dict]) -> str:
     """
     Generate answer text from relevant segments
@@ -149,3 +150,45 @@ def generate_answer_from_segments(query: str, segments: List[Dict]) -> str:
     combined_text = " ".join(relevant_texts)
     
     return f"Based on the content: {combined_text[:500]}..." if len(combined_text) > 500 else combined_text
+
+def get_transcript(video_path):
+    """
+    Extract transcript from video using Whisper medium model on CUDA.
+    
+    Args:
+        video_path: Path to the video file
+        
+    Returns:
+        Transcript string in format: "line,start,end\nline,start,end\n..."
+        Returns None if extraction fails
+    """
+    try:
+        # Check if CUDA is available
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # Load Whisper medium model
+        model = whisper.load_model("medium", device=device)
+        
+        # Transcribe the video
+        result = model.transcribe(
+            video_path,
+            verbose=False,
+            word_timestamps=False  # We want segment-level timestamps
+        )
+        
+        # Format transcript as requested: line,start,end
+        transcript_lines = []
+        for segment in result['segments']:
+            text = segment['text'].strip()
+            start = segment['start']
+            end = segment['end']
+            transcript_lines.append(f"{text},{start},{end}")
+        
+        # Join all lines with newline
+        transcript = "\n".join(transcript_lines)
+        
+        return transcript if transcript else None
+        
+    except Exception as e:
+        print(f"Error extracting transcript: {str(e)}")
+        return None
