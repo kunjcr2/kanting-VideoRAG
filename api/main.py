@@ -7,7 +7,7 @@ from clip_manager import ClipManager
 import whisper
 import torch
 
-def store_transcript(transcript: str, video_path: str, vector_store: VectorStore) -> Dict:
+def store_transcript(transcript: str, video_path: str, video_url: str, vector_store: VectorStore):
     """
     Store transcript in vector store
     
@@ -51,10 +51,8 @@ def store_transcript(transcript: str, video_path: str, vector_store: VectorStore
     # Extract the response
     notes = message.content[0].text
     
-    return {
-        "video_id": video_id,
-        "notes": notes
-    }
+    video_id = vector_store.add_video(video_path, transcript, video_url)
+    return {"video_id": video_id, "status": "success", "notes": notes}
 
 def query_and_extract_clip(
     query: str,

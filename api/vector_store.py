@@ -1,4 +1,6 @@
 import json
+# Ensure GPU availability early
+import gpu_init  # will raise helpful error if CUDA/PyTorch isn't configured
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
@@ -9,7 +11,7 @@ import uuid
 class VectorStore:
     def __init__(self, storage_path: str = "vector_store.json"):
         self.storage_path = storage_path
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.model = SentenceTransformer('all-MiniLM-L6-v2', device="cuda")
         self.data = self._load_data()
     
     def _load_data(self) -> Dict:
@@ -43,21 +45,25 @@ class VectorStore:
         result = cursor.fetchone()
         return result[0] if result else None    
     
-    def add_video(self, video_path: str, transcript: str) -> str:
+    def add_video(self, video_path: str, transcript: str, video_url: str = None) -> str:
         """
         Add video transcript to storage
         
         Args:
             video_path: Path to video file
             transcript: Format "text, start, end\\ntext, start, end..."
+            video_url: Original video URL (optional)
             
         Returns:
             video_id: Unique identifier for the video
         """
         video_id = f"video_{uuid.uuid4().hex[:8]}"
         
-        # Store video path
-        self.data["videos"][video_id] = video_path
+        # Store video path and URL
+        self.data["videos"][video_id] = {
+            "path": video_path,
+            "url": video_url
+        }
         
         # Parse and store segments
         segments = self._parse_transcript(transcript, video_id)
@@ -134,7 +140,13 @@ class VectorStore:
     
     def get_video_path(self, video_id: str) -> str:
         """Get video path by video_id"""
-        return self.data["videos"].get(video_id)
+        video_info = self.data["videos"].get(video_id)
+        if video_info and isinstance(video_info, dict):
+            return video_info.get("path")
+        # Backward compatibility: if it's just a string (old format)
+        elif isinstance(video_info, str):
+            return video_info
+        return None 
     
     def get_stats(self) -> Dict:
         """Get storage statistics"""

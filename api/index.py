@@ -18,33 +18,29 @@ downloader = VideoDownloader("videos")  # Store videos in videos/ directory
 
 @app.route('/store-transcript', methods=['POST'])
 def store_transcript_endpoint():
-    """Store video and its transcript"""
     data = request.get_json()
-    
     video_url = data.get('video_url')
     
     if not video_url:
         return jsonify({"error": "video_url required"}), 400
         
-    # Download video from URL
     try:
-        video_name = f"video_{os.urandom(4).hex()}"  # Simple unique name
+        video_name = f"video_{os.urandom(4).hex()}"
         video_path = downloader.download_video(video_url, video_name)
         if not video_path:
             return jsonify({"error": "Failed to download video"}), 400
         
-        # Extract transcript from the downloaded video
         transcript = get_transcript(video_path)
         if not transcript:
             return jsonify({"error": "Failed to extract transcript from video"}), 400
             
-        # Store transcript with downloaded video path
-        result = store_transcript(transcript, video_path, vector_store)
+        # Pass video_url to store_transcript
+        result = store_transcript(transcript, video_path, video_url, vector_store)
         return jsonify(result), 201
             
     except Exception as e:
         return jsonify({"error": f"Error processing request: {str(e)}"}), 500
-
+    
 @app.route('/query', methods=['POST'])
 def query_endpoint():
     """Query and get clip"""

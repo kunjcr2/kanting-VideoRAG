@@ -1,6 +1,6 @@
 import yt_dlp
 import os
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 class VideoDownloader:
     def __init__(self, download_dir="videos"):
@@ -12,25 +12,45 @@ class VideoDownloader:
         if video_name is None:
             # Extract video ID from URL for naming
             parsed = urlparse(url)
-            if 'youtube.com' in parsed.netloc:
-                video_name = parsed.path.split('/')[-1]
+            if 'youtube.com' in parsed.netloc or 'youtu.be' in parsed.netloc:
+                if 'youtu.be' in parsed.netloc:
+                    # Short URL format: https://youtu.be/VIDEO_ID
+                    video_name = parsed.path.lstrip('/')
+                else:
+                    # Standard URL format: https://www.youtube.com/watch?v=VIDEO_ID
+                    query_params = parse_qs(parsed.query)
+                    video_name = query_params.get('v', ['downloaded_video'])[0]
             else:
                 video_name = "downloaded_video"
+        
+        # Remove any file extension if present in video_name
+        video_name = os.path.splitext(video_name)[0]
         
         ydl_opts = {
             'format': 'best[height<=720]',
             'outtmpl': os.path.join(self.download_dir, f'{video_name}.%(ext)s'),
             'quiet': False,
+            'no_warnings': False,
         }
-        
+
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                print(f"🔄 Downloading from: {url}")
                 info = ydl.extract_info(url, download=True)
                 video_path = ydl.prepare_filename(info)
                 print(f"✅ Downloaded: {video_path}")
-                return video_path
+                
+                # Verify file exists
+                if os.path.exists(video_path):
+                    return video_path
+                else:
+                    print(f"❌ File not found after download: {video_path}")
+                    return None
+                    
         except Exception as e:
             print(f"❌ Download failed: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
 # SHORTER EDUCATIONAL VIDEOS (2-8 minutes each)
