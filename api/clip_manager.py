@@ -81,11 +81,19 @@ class ClipManager:
             Tuple of (start_time, end_time) or (None, None) if invalid
         """
         if not segments:
+            print("DEBUG: No segments provided to find_clip_bounds")
             return 0, 0
         
+        # Debug: Print segment data to identify timestamp issues
+        print(f"DEBUG: Processing {len(segments)} segments")
+        for i, seg in enumerate(segments[:3]):  # Show first 3 segments
+            print(f"  Segment {i}: start={seg.get('start')}, end={seg.get('end')}, text={seg.get('text', '')[:50]}...")
+        
         # Get initial bounds from segments
-        start_times = [seg["start"] for seg in segments]
-        end_times = [seg["end"] for seg in segments]
+        start_times = [seg.get("start", 0) for seg in segments]
+        end_times = [seg.get("end", 0) for seg in segments]
+        
+        print(f"DEBUG: start_times={start_times[:5]}, end_times={end_times[:5]}")
         
         clip_start = min(start_times)
         clip_end = max(end_times)

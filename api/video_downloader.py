@@ -35,20 +35,20 @@ class VideoDownloader:
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                print(f"🔄 Downloading from: {url}")
+                print(f"Downloading from: {url}")
                 info = ydl.extract_info(url, download=True)
                 video_path = ydl.prepare_filename(info)
-                print(f"✅ Downloaded: {video_path}")
+                print(f"Downloaded: {video_path}")
                 
                 # Verify file exists
                 if os.path.exists(video_path):
                     return video_path
                 else:
-                    print(f"❌ File not found after download: {video_path}")
+                    print(f"File not found after download: {video_path}")
                     return None
                     
         except Exception as e:
-            print(f"❌ Download failed: {e}")
+            print(f"Download failed: {e}")
             import traceback
             traceback.print_exc()
             return None

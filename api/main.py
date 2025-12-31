@@ -1,129 +1,178 @@
-import os
-import random
-from typing import Dict, List
-from vector_store import VectorStore
-from clip_manager import ClipManager
+"""
+Main Module for Kanting Video RAG
 
+Handles:
+- Video transcript extraction (Whisper)
+- Summary generation (OpenAI)
+- Query and response generation
+"""
+
+import os
+from typing import Dict, List
 import whisper
 import torch
 
-def store_transcript(transcript: str, video_path: str, video_url: str, vector_store: VectorStore):
+from vector_store import VectorStore
+from clip_manager import ClipManager
+from llm_client import generate_summary, generate_response
+
+
+def get_transcript(video_path: str) -> str:
     """
-    Store transcript in vector store
+    Extract transcript from video using Whisper on GPU.
+    
+    Args:
+        video_path: Path to the video file
+        
+    Returns:
+        Transcript in format: "text,start,end\ntext,start,end\n..."
+        Returns None if extraction fails
+    """
+    try:
+        # Use GPU if available
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading Whisper model on {device}...")
+        
+        model = whisper.load_model("medium", device=device)
+        
+        print(f"Transcribing video: {video_path}")
+        result = model.transcribe(
+            video_path,
+            verbose=False,
+            word_timestamps=False  # Segment-level timestamps
+        )
+        
+        # Format as "text,start,end"
+        transcript_lines = []
+        for segment in result['segments']:
+            text = segment['text'].strip().replace('\n', ' ')
+            start = segment['start']
+            end = segment['end']
+            transcript_lines.append(f"{text},{start:.2f},{end:.2f}")
+        
+        transcript = "\n".join(transcript_lines)
+        print(f"Transcribed {len(transcript_lines)} segments")
+        
+        return transcript if transcript else None
+        
+    except Exception as e:
+        print(f"Error extracting transcript: {str(e)}")
+        return None
+
+
+def store_transcript(
+    transcript: str, 
+    video_path: str, 
+    video_url: str, 
+    vector_store: VectorStore
+) -> Dict:
+    """
+    Store transcript in vector store and generate summary.
     
     Args:
         transcript: Raw transcript with timestamps
-        video_path: Path to video file (local path after download)
+        video_path: Local path to video file
+        video_url: Original YouTube URL
         vector_store: VectorStore instance
         
     Returns:
-        Dict with video_id and stats
-    """    
-    video_id = vector_store.add_video(video_path, transcript)
-    stats = vector_store.get_stats()
-
-    import anthropic
-
-    client = anthropic.Anthropic(
-        api_key=os.environ.get("ANTHROPIC_API_KEY")
+        Dict with video_id, status, and summary
+    """
+    # Generate summary using OpenAI
+    print("Generating summary...")
+    summary = generate_summary(transcript)
+    print(f"Summary: {summary[:100]}...")
+    
+    # Add to vector store with summary
+    video_id = vector_store.add_video(
+        video_url=video_url,
+        transcript=transcript,
+        video_path=video_path,
+        summary=summary
     )
     
-    prompt = f"""Please analyze this video transcript and create structured notes with the following sections:
+    return {
+        "video_id": video_id,
+        "status": "success",
+        "summary": summary
+    }
 
-                1. **Main Topic/Title**: A clear title for the video
-                2. **Summary**: 2-3 sentence overview
-                3. **Key Points**: Bullet points of main ideas (5-7 points)
-                4. **Important Timestamps/Quotes**: Notable moments (if timestamps are present)
-                5. **Takeaways**: Action items or conclusions
-
-                Transcript:
-                {transcript}
-        """
-    
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2000,
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
-    )
-    
-    # Extract the response
-    notes = message.content[0].text
-    
-    video_id = vector_store.add_video(video_path, transcript, video_url)
-    return {"video_id": video_id, "status": "success", "notes": notes}
 
 def query_and_extract_clip(
     query: str,
     vector_store: VectorStore,
     clip_manager: ClipManager,
-    output_dir: str = "clips",
     top_k: int = 10
 ) -> Dict:
     """
-    Query vector store and return video URL with timestamps
+    Query vector store and return answer with video URL + timestamp.
     
     Args:
-        query: User query
-        vector_store: VectorStore instance  
+        query: User's question
+        vector_store: VectorStore instance
         clip_manager: ClipManager instance
-        output_dir: Output directory for clips (unused, kept for compatibility)
-        top_k: Number of top segments to consider
+        top_k: Number of segments to retrieve
         
     Returns:
-        Dict with answer, video URL with timestamps, and segments
+        Dict with answer, video URL with timestamp, etc.
     """
-    # Step 1: Search for relevant segments
     print(f"Searching for: '{query}'")
+    
+    # Search for relevant segments
     segments = vector_store.search(query, top_k=top_k)
     
     if not segments:
         return {
-            "answer": "No relevant content found.",
+            "answer": "No relevant content found. Please add some videos first.",
             "video_url": None,
             "error": "No segments found"
         }
     
-    # Step 2: Group segments by video and pick best video
+    # Group segments by video and pick the best one
     video_groups = {}
     for seg in segments:
-        video_id = seg["video_id"]
-        if video_id not in video_groups:
-            video_groups[video_id] = []
-        video_groups[video_id].append(seg)
+        vid = seg["video_id"]
+        if vid not in video_groups:
+            video_groups[vid] = []
+        video_groups[vid].append(seg)
     
-    # Pick video with most segments (you could also use average similarity)
-    best_video_id = max(video_groups.keys(), key=lambda vid: len(video_groups[vid]))
+    # Pick video with highest total similarity
+    best_video_id = max(
+        video_groups.keys(),
+        key=lambda vid: sum(s["similarity"] for s in video_groups[vid])
+    )
     best_segments = video_groups[best_video_id]
     
-    print(f"Selected video: {best_video_id} with {len(best_segments)} segments")
+    print(f"Best match: {best_video_id} ({len(best_segments)} segments)")
     
-    # Step 3: Find clip boundaries
-    clip_start, clip_end = clip_manager.find_clip_bounds(best_segments)
-    
-    # Step 4: Get original video URL from vector store
+    # Get video info
     video_url = vector_store.get_video_url(best_video_id)
+    summary = vector_store.get_video_summary(best_video_id)
     
     if not video_url:
         return {
             "answer": "Found relevant content but video URL not available.",
-            "segments": best_segments,
             "video_url": None,
             "error": "Video URL not found"
         }
     
-    # Step 5: Create timestamped URL
-    # Format: original_url?t=start (or #t=start,end for some platforms)
-    # You can customize this based on your video platform
-    timestamped_url = f"{video_url}?t={int(clip_start)}"
-    # Alternative format with start and end: f"{video_url}#t={int(clip_start)},{int(clip_end)}"
+    # Find clip boundaries for timestamp
+    clip_start, clip_end = clip_manager.find_clip_bounds(best_segments)
     
-    # Step 6: Generate answer from segments
-    answer_text = generate_answer_from_segments(query, best_segments)
+    # Create timestamped YouTube URL
+    timestamp_seconds = int(clip_start) if clip_start else 0
+    timestamped_url = f"{video_url}&t={timestamp_seconds}" if "?" in video_url else f"{video_url}?t={timestamp_seconds}"
+    
+    # Generate answer using OpenAI with summary as context
+    print("Generating answer...")
+    answer = generate_response(
+        query=query,
+        summary=summary or "No summary available",
+        context_chunks=best_segments
+    )
     
     return {
-        "answer": answer_text,
+        "answer": answer,
         "video_url": timestamped_url,
         "original_video_url": video_url,
         "clip_start": clip_start,
@@ -132,61 +181,3 @@ def query_and_extract_clip(
         "segments_used": len(best_segments),
         "max_similarity": max(seg["similarity"] for seg in best_segments)
     }
-def generate_answer_from_segments(query: str, segments: List[Dict]) -> str:
-    """
-    Generate answer text from relevant segments
-    
-    Args:
-        query: Original query
-        segments: Relevant segments with text
-        
-    Returns:
-        Answer text
-    """
-    # Simple concatenation - you could use LLM here for better answers
-    relevant_texts = [seg["text"] for seg in segments[:3]]  # Use top 3 segments
-    combined_text = " ".join(relevant_texts)
-    
-    return f"Based on the content: {combined_text[:500]}..." if len(combined_text) > 500 else combined_text
-
-def get_transcript(video_path):
-    """
-    Extract transcript from video using Whisper medium model on CUDA.
-    
-    Args:
-        video_path: Path to the video file
-        
-    Returns:
-        Transcript string in format: "line,start,end\nline,start,end\n..."
-        Returns None if extraction fails
-    """
-    try:
-        # Check if CUDA is available
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        
-        # Load Whisper medium model
-        model = whisper.load_model("medium", device=device)
-        
-        # Transcribe the video
-        result = model.transcribe(
-            video_path,
-            verbose=False,
-            word_timestamps=False  # We want segment-level timestamps
-        )
-        
-        # Format transcript as requested: line,start,end
-        transcript_lines = []
-        for segment in result['segments']:
-            text = segment['text'].strip()
-            start = segment['start']
-            end = segment['end']
-            transcript_lines.append(f"{text},{start},{end}")
-        
-        # Join all lines with newline
-        transcript = "\n".join(transcript_lines)
-        
-        return transcript if transcript else None
-        
-    except Exception as e:
-        print(f"Error extracting transcript: {str(e)}")
-        return None

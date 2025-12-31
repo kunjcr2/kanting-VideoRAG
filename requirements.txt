@@ -1,13 +1,28 @@
-Flask==3.1.2
+# Core Framework
+Flask==3.1.0
 Flask-Cors==4.0.0
-numpy==2.3.2
-sentence-transformers==4.1.0
-scikit-learn==1.6.1
-yt-dlp==2025.10.22
-requests==2.32.5
-python-dotenv==1.1.0
-openai-whisper==20250625
-torch==2.6.0
-torchaudio==2.6.0
+
+# Vector Store
+faiss-cpu==1.7.4
+sentence-transformers==2.2.2
+
+# LLM
+openai==1.14.0
+
+# Video Processing
+yt-dlp==2024.3.10
 ffmpeg-python==0.2.0
-boto3
+
+# ML/Whisper
+openai-whisper==20231117
+torch==2.2.1
+torchaudio==2.2.1
+
+# Utilities
+numpy==1.26.4
+scikit-learn==1.4.1
+python-dotenv==1.0.1
+requests==2.31.0
+
+# Colab/Ngrok
+pyngrok==7.1.5
