@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence } from 'framer-motion'
 import { X, CheckCircle, AlertCircle, Info } from 'lucide-react'
 import useStore from '../store/useStore'
 
@@ -9,11 +9,8 @@ function ToastContainer() {
         <div className="fixed bottom-4 right-4 flex flex-col gap-2 z-50">
             <AnimatePresence>
                 {toasts.map((toast) => (
-                    <motion.div
+                    <div
                         key={toast.id}
-                        initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
                         className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border bg-white ${toast.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' :
                                 toast.type === 'error' ? 'border-red-200 bg-red-50 text-red-800' :
                                     'border-primary-200 bg-primary-50 text-primary-800'
@@ -29,7 +26,7 @@ function ToastContainer() {
                         >
                             <X className="w-4 h-4" />
                         </button>
-                    </motion.div>
+                    </div>
                 ))}
             </AnimatePresence>
         </div>

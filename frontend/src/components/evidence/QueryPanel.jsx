@@ -46,7 +46,7 @@ function QueryPanel() {
                             type="text"
                             value={question}
                             onChange={(e) => setQuestion(e.target.value)}
-                            placeholder={isReady ? "Ask about this video..." : "Select a ready video first..."}
+                            placeholder={isReady ? "Ask about videos in this folder..." : "Select a ready video first..."}
                             disabled={!isReady}
                             className="w-full bg-white border border-gray-300 rounded pl-10 pr-4 py-3 text-sm placeholder-gray-400 text-gray-900 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                         />
@@ -94,7 +94,7 @@ function QueryPanel() {
                         </div>
                         <p className="text-sm text-gray-900 font-medium mb-2">
                             {activeVideo
-                                ? 'Ask a question about the video'
+                                ? 'Ask a question about videos in this folder'
                                 : 'Select a video to start asking questions'
                             }
                         </p>

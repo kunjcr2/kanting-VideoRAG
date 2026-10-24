@@ -1,22 +1,44 @@
-"""
-OpenAI LLM Client for Kanting
-
-Provides two main functions:
-1. generate_summary - Create a brief summary of a transcript
-2. generate_response - Answer questions using summary + context chunks
-"""
+"""Local Ollama client for summaries and video question answering."""
 
 import os
-from openai import OpenAI
+import requests
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:latest")
+OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "180"))
 
-MODEL = "gpt-4o-mini"
+
+def _fallback_summary(transcript: str) -> str:
+    text = " ".join(line.rsplit(',', 2)[0].strip() for line in transcript.splitlines())
+    text = " ".join(text.split())
+    if not text:
+        return "No transcript content was available."
+    return text[:300].rstrip() + ("..." if len(text) > 300 else "")
+
+
+def _chat(system: str, prompt: str) -> str:
+    response = requests.post(
+        f"{OLLAMA_BASE_URL}/api/chat",
+        json={
+            "model": OLLAMA_MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "options": {"temperature": 0.2},
+        },
+        timeout=OLLAMA_TIMEOUT,
+    )
+    response.raise_for_status()
+    message = response.json().get("message", {}).get("content", "").strip()
+    if not message:
+        raise RuntimeError("Ollama returned an empty response")
+    return message
 
 
 def generate_summary(transcript: str) -> str:
@@ -49,17 +71,11 @@ Transcript:
 
 Summary:"""
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant that creates concise video summaries."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=200,
-        temperature=0.7
-    )
-    
-    return response.choices[0].message.content.strip()
+    try:
+        return _chat("You create concise video summaries.", prompt)
+    except requests.RequestException as exc:
+        print(f"Ollama unavailable ({exc}); using an extractive summary.")
+        return _fallback_summary(transcript)
 
 
 def generate_response(query: str, summary: str, context_chunks: list, video_title: str = None) -> str:
@@ -99,17 +115,11 @@ Instructions:
 
 Answer:"""
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": "You are a helpful video content assistant. Answer questions based on the provided video transcript."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=500,
-        temperature=0.7
-    )
-    
-    return response.choices[0].message.content.strip()
+    try:
+        return _chat("You answer questions using only the supplied video transcript.", prompt)
+    except requests.RequestException as exc:
+        print(f"Ollama unavailable ({exc}); using the best retrieved transcript segment.")
+        return f"Based on the available transcript: {context_chunks[0]['text']}"
 
 
 # Test

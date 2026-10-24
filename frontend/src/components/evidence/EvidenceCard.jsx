@@ -2,7 +2,7 @@ import { Play, FileText, ExternalLink } from 'lucide-react'
 import useStore from '../../store/useStore'
 
 function EvidenceCard({ segment, index }) {
-    const { setCurrentTime, setHighlightedSegments } = useStore()
+    const { setActiveVideo, setCurrentTime, setHighlightedSegments } = useStore()
 
     // Format timestamp
     const formatTime = (seconds) => {
@@ -12,7 +12,8 @@ function EvidenceCard({ segment, index }) {
     }
 
     const handleJump = () => {
-        setCurrentTime(segment.timestamp || segment.start || 0)
+        if (segment.video_id) setActiveVideo(segment.video_id)
+        setCurrentTime(segment.timestamp ?? segment.start ?? 0)
     }
 
     const handleHighlight = () => {
@@ -36,7 +37,7 @@ function EvidenceCard({ segment, index }) {
                     {/* Timestamp */}
                     <div className="flex items-center gap-2 mb-1">
                         <span className="font-mono text-xs text-primary-600 font-semibold">
-                            {formatTime(segment.timestamp || segment.start || 0)}
+                            {formatTime(segment.timestamp ?? segment.start ?? 0)}
                         </span>
                         {segment.confidence && (
                             <span className="text-xs text-neutral-500">

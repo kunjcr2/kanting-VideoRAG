@@ -1,13 +1,8 @@
-.vercel
-*.log
-*.pyc
-__pycache__
-
-# Environments 
-.env 
-.venv 
-env/ 
-venv/ 
-ENV/ 
-env.bak/ 
-venv.bak/ 
+work/
+vector_data/
+videos/
+__pycache__/
+*.py[cod]
+.env
+frontend/node_modules/
+frontend/dist/

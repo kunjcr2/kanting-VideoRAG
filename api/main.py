@@ -3,11 +3,12 @@ Main Module for Kanting Video RAG
 
 Handles:
 - Video transcript extraction (Whisper)
-- Summary generation (OpenAI)
+- Summary generation (local Ollama)
 - Query and response generation
 """
 
 import os
+import threading
 from typing import Dict, List
 import whisper
 import torch
@@ -15,6 +16,25 @@ import torch
 from vector_store import VectorStore
 from clip_manager import ClipManager
 from llm_client import generate_summary, generate_response
+
+_whisper_model = None
+_whisper_lock = threading.Lock()
+
+
+def transcript_segments(transcript: str) -> List[Dict]:
+    """Convert the persisted timestamped transcript into UI/API segments."""
+    segments = []
+    for index, line in enumerate(transcript.strip().splitlines()):
+        parts = line.rsplit(',', 2)
+        if len(parts) != 3:
+            continue
+        try:
+            text, start, end = parts[0].strip(), float(parts[1]), float(parts[2])
+        except ValueError:
+            continue
+        if text:
+            segments.append({"id": index, "text": text, "start": start, "end": end})
+    return segments
 
 
 def get_transcript(video_path: str) -> str:
@@ -33,13 +53,19 @@ def get_transcript(video_path: str) -> str:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Loading Whisper model on {device}...")
         
-        model = whisper.load_model("medium", device=device)
+        global _whisper_model
+        model_name = os.getenv("WHISPER_MODEL", "base")
+        with _whisper_lock:
+            if _whisper_model is None:
+                _whisper_model = whisper.load_model(model_name, device=device)
+        model = _whisper_model
         
         print(f"Transcribing video: {video_path}")
         result = model.transcribe(
             video_path,
             verbose=False,
-            word_timestamps=False  # Segment-level timestamps
+            word_timestamps=False,
+            fp16=device == "cuda",
         )
         
         # Format as "text,start,end"
@@ -78,7 +104,7 @@ def store_transcript(
     Returns:
         Dict with video_id, status, and summary
     """
-    # Generate summary using OpenAI
+    # Generate summary using local Ollama
     print("Generating summary...")
     summary = generate_summary(transcript)
     print(f"Summary: {summary[:100]}...")
@@ -95,6 +121,8 @@ def store_transcript(
         "video_id": video_id,
         "status": "success",
         "summary": summary
+        ,"transcript": transcript_segments(transcript),
+        "segment_count": len(transcript_segments(transcript)),
     }
 
 
@@ -118,8 +146,11 @@ def query_and_extract_clip(
     """
     print(f"Searching for: '{query}'")
     
-    # Search for relevant segments
-    segments = vector_store.search(query, top_k=top_k)
+    # Retrieve a wider candidate pool before grouping by video. Searching only
+    # the first 10 FAISS hits can hide a strong match from another video in the
+    # same folder when one video contains many similar transcript lines.
+    candidate_count = max(top_k, int(os.getenv("RETRIEVAL_CANDIDATES", "50")))
+    segments = vector_store.search(query, top_k=candidate_count)
     
     if not segments:
         return {
@@ -136,12 +167,25 @@ def query_and_extract_clip(
             video_groups[vid] = []
         video_groups[vid].append(seg)
     
-    # Pick video with highest total similarity
+    # Pick the video with the strongest evidence. A pure sum rewards videos
+    # that happen to have more near-duplicate segments, so rank by the best
+    # hit plus the average of the best few hits instead.
+    def video_score(video_segments):
+        ranked = sorted(video_segments, key=lambda item: item["similarity"], reverse=True)
+        strongest = ranked[0]["similarity"]
+        supporting = ranked[: min(3, len(ranked))]
+        average_support = sum(item["similarity"] for item in supporting) / len(supporting)
+        return (0.7 * strongest) + (0.3 * average_support)
+
     best_video_id = max(
         video_groups.keys(),
-        key=lambda vid: sum(s["similarity"] for s in video_groups[vid])
+        key=lambda vid: video_score(video_groups[vid])
     )
-    best_segments = video_groups[best_video_id]
+    best_segments = sorted(
+        video_groups[best_video_id],
+        key=lambda item: item["similarity"],
+        reverse=True,
+    )[:top_k]
     
     print(f"Best match: {best_video_id} ({len(best_segments)} segments)")
     
@@ -163,7 +207,7 @@ def query_and_extract_clip(
     timestamp_seconds = int(clip_start) if clip_start else 0
     timestamped_url = f"{video_url}&t={timestamp_seconds}" if "?" in video_url else f"{video_url}?t={timestamp_seconds}"
     
-    # Generate answer using OpenAI with summary as context
+    # Generate answer using local Ollama with summary as context
     print("Generating answer...")
     answer = generate_response(
         query=query,
@@ -179,5 +223,6 @@ def query_and_extract_clip(
         "clip_end": clip_end,
         "video_id": best_video_id,
         "segments_used": len(best_segments),
-        "max_similarity": max(seg["similarity"] for seg in best_segments)
+        "max_similarity": max(seg["similarity"] for seg in best_segments),
+        "segments": best_segments,
     }

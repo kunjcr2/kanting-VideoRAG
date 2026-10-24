@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react'
 import { API_URL } from '../api'
 
 function StatusBar({ onUploadClick }) {
-    const { stats, fetchStats } = useStore()
+    const { stats, fetchStats, loadVideos } = useStore()
     const [connected, setConnected] = useState(false)
+    const [now] = useState(() => Date.now())
 
     useEffect(() => {
         fetchStats()
+        loadVideos()
         // Check connection
         const checkConnection = async () => {
             try {
@@ -21,11 +23,11 @@ function StatusBar({ onUploadClick }) {
         checkConnection()
         const interval = setInterval(checkConnection, 30000)
         return () => clearInterval(interval)
-    }, [fetchStats])
+    }, [fetchStats, loadVideos])
 
     const formatTime = (date) => {
         if (!date) return 'never'
-        const mins = Math.floor((Date.now() - new Date(date).getTime()) / 60000)
+        const mins = Math.floor((now - new Date(date).getTime()) / 60000)
         if (mins < 1) return 'just now'
         if (mins < 60) return `${mins}m ago`
         return `${Math.floor(mins / 60)}h ago`

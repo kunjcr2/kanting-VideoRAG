@@ -4,25 +4,25 @@ A Video RAG (Retrieval Augmented Generation) system that enables intelligent vid
 
 ## Features
 
-- **Video Ingestion**: Download YouTube videos and extract transcripts using OpenAI Whisper (GPU)
+- **Video Ingestion**: Download YouTube videos and extract transcripts using local Whisper
 - **Semantic Search**: Store transcripts in FAISS vector database for efficient similarity search
-- **AI-Powered Answers**: Get context-aware responses from GPT-4o-mini using retrieved video content
+- **AI-Powered Answers**: Get context-aware responses from a local Ollama model using retrieved video content
 - **Summary Generation**: Auto-generate brief summaries that provide context for all queries
 - **Timestamped Results**: Receive direct YouTube links with timestamps (e.g., `?t=125`)
 
 ## Tech Stack
 
 - **Backend**: Flask with CORS
-- **Speech-to-Text**: OpenAI Whisper (medium model, GPU)
+- **Speech-to-Text**: Local `openai-whisper` (`WHISPER_MODEL`, default `base`)
 - **Embeddings**: Sentence Transformers (all-MiniLM-L6-v2)
 - **Vector Store**: FAISS
-- **LLM**: OpenAI GPT-4o-mini
+- **LLM**: Ollama running locally
 - **Video Processing**: yt-dlp for downloads
 
 ## Quick Start (Google Colab)
 
 1. Open `kanting_colab.ipynb` in Google Colab
-2. Set your `OPENAI_API_KEY` and `NGROK_AUTH_TOKEN`
+2. Start Ollama and download a model, for example `ollama pull llama3.2`
 3. Run all cells
 4. Use the public ngrok URL to access the API
 
@@ -33,7 +33,7 @@ A Video RAG (Retrieval Augmented Generation) system that enables intelligent vid
 POST /store-transcript
 Content-Type: application/json
 
-{"video_url": "https://youtube.com/watch?v=..."}
+{"video_url": "https://youtube.com/watch?v=...", "folder": "employee-training"}
 ```
 
 **Response:**
@@ -50,7 +50,7 @@ Content-Type: application/json
 POST /query
 Content-Type: application/json
 
-{"query": "What did they say about machine learning?"}
+{"query": "What did they say about machine learning?", "folder": "employee-training"}
 ```
 
 **Response:**
@@ -68,6 +68,14 @@ Content-Type: application/json
 GET /stats
 ```
 
+### List Folders
+
+```http
+GET /folders
+```
+
+Each folder is an isolated FAISS vector store under `VECTOR_STORE_DIR/<folder>`. A query searches only the selected folder. The web app automatically sends the active video's folder with every query, so videos in other folders cannot contribute evidence.
+
 ### Health Check
 ```http
 GET /health
@@ -80,8 +88,9 @@ kanting/
 ├── api/
 │   ├── index.py           # Flask API endpoints
 │   ├── main.py            # Core transcript/query logic
-│   ├── llm_client.py      # OpenAI GPT-4o-mini client
-│   ├── vector_store.py    # FAISS vector database
+│   ├── llm_client.py      # Local Ollama client
+│   ├── vector_store.py    # One FAISS store for one folder
+│   ├── folder_store.py    # Folder-to-vector-store manager
 │   ├── clip_manager.py    # Clip boundary utilities
 │   └── video_downloader.py # YouTube download handler
 ├── kanting_colab.ipynb    # Google Colab notebook
@@ -93,16 +102,16 @@ kanting/
 ## How It Works
 
 1. **Video Ingestion**: Submit a YouTube URL → Download video → Extract transcript with Whisper
-2. **Summarization**: Generate a 2-3 sentence summary using GPT-4o-mini
+2. **Summarization**: Generate a 2-3 sentence summary using Ollama
 3. **Indexing**: Chunk transcript → Embed with Sentence Transformers → Store in FAISS
-4. **Query**: User question → Search FAISS → Get relevant chunks
-5. **Response**: Pass summary + chunks to GPT → Return answer + timestamped URL
+4. **Query**: User question → Search only the active video's folder → Get relevant chunks
+5. **Response**: Pass summary + chunks to local Ollama → Return answer + timestamped URL
 
 ## Requirements
 
 - Python 3.10+
-- CUDA-compatible GPU (for Whisper)
-- OpenAI API key
+- CPU or CUDA-compatible GPU (CPU is the default)
+- Ollama with a local chat model (default: `llama3.2:latest`)
 - FFmpeg (for video processing)
 
 ## License

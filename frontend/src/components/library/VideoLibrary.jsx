@@ -6,6 +6,12 @@ import IngestionProgress from './IngestionProgress'
 function VideoLibrary({ onAddVideo }) {
     const { videos, activeVideoId, setActiveVideo } = useStore()
     const videoList = Object.values(videos)
+    const folderGroups = Object.entries(videoList.reduce((groups, video) => {
+        const folder = video.folder || 'default'
+        groups[folder] = groups[folder] || []
+        groups[folder].push(video)
+        return groups
+    }, {}))
 
     return (
         <div className="flex flex-col h-full">
@@ -37,13 +43,20 @@ function VideoLibrary({ onAddVideo }) {
                         </button>
                     </div>
                 ) : (
-                    videoList.map((video) => (
-                        <VideoCard
-                            key={video.id}
-                            video={video}
-                            isActive={video.id === activeVideoId}
-                            onClick={() => setActiveVideo(video.id)}
-                        />
+                    folderGroups.map(([folder, folderVideos]) => (
+                        <div key={folder} className="space-y-2">
+                            <div className="px-2 pt-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                {folder}
+                            </div>
+                            {folderVideos.map((video) => (
+                                <VideoCard
+                                    key={video.id}
+                                    video={video}
+                                    isActive={video.id === activeVideoId}
+                                    onClick={() => setActiveVideo(video.id)}
+                                />
+                            ))}
+                        </div>
                     ))
                 )}
             </div>

@@ -1,28 +1,28 @@
 # Core Framework
-Flask==3.1.0
-Flask-Cors==4.0.0
+Flask>=3.1,<4
+Flask-Cors>=6,<7
 
 # Vector Store
-faiss-cpu==1.7.4
-sentence-transformers==2.2.2
+faiss-cpu>=1.9,<2
+sentence-transformers>=3.4,<6
 
 # LLM
-openai==1.14.0
+# Ollama is accessed through its local HTTP API; no cloud LLM SDK is needed.
 
 # Video Processing
-yt-dlp==2024.3.10
+yt-dlp>=2024.3.10
 ffmpeg-python==0.2.0
 
 # ML/Whisper
-openai-whisper==20231117
-torch==2.2.1
-torchaudio==2.2.1
+openai-whisper>=20231117
+torch>=2.7,<3
+torchaudio>=2.7,<3
 
 # Utilities
-numpy==1.26.4
-scikit-learn==1.4.1
-python-dotenv==1.0.1
-requests==2.31.0
+numpy>=1.26,<3
+scikit-learn>=1.4,<2
+python-dotenv>=1,<2
+requests>=2.31,<3
 
 # Colab/Ngrok
-pyngrok==7.1.5
+pyngrok>=7.1.5

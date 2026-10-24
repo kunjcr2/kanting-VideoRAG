@@ -1,12 +1,12 @@
-import { useRef, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Play, Pause, Volume2, VolumeX, Maximize, SkipBack, SkipForward } from 'lucide-react'
 import useStore, { VIDEO_STATES } from '../../store/useStore'
 
 function VideoPlayer({ video }) {
-    const { setCurrentTime, currentTime } = useStore()
+    const { currentTime } = useStore()
     const [playing, setPlaying] = useState(false)
     const [muted, setMuted] = useState(false)
-    const [duration, setDuration] = useState(0)
+    const [duration] = useState(0)
     const playerRef = useRef(null)
 
     // Extract YouTube video ID
@@ -17,7 +17,15 @@ function VideoPlayer({ video }) {
     }
 
     const videoId = getVideoId(video.youtubeUrl)
-    const isReady = video.state.status === VIDEO_STATES.READY
+    const isLocalVideo = video.youtubeUrl?.startsWith('/media/') || video.youtubeUrl?.startsWith('blob:')
+
+    // React state changes do not automatically seek a native HTML5 video.
+    // Apply the timestamp whenever a transcript/evidence Jump action updates it.
+    useEffect(() => {
+        if (isLocalVideo && playerRef.current && Number.isFinite(currentTime)) {
+            playerRef.current.currentTime = currentTime
+        }
+    }, [currentTime, isLocalVideo, video.youtubeUrl])
     const isProcessing = [
         VIDEO_STATES.UPLOADING,
         VIDEO_STATES.TRANSCRIBING,
@@ -36,7 +44,15 @@ function VideoPlayer({ video }) {
         <div className="bg-black relative border-b border-neutral-200">
             {/* Video Embed */}
             <div className="aspect-video">
-                {videoId ? (
+                {isLocalVideo ? (
+                    <video
+                        ref={playerRef}
+                        className="w-full h-full object-contain"
+                        src={video.youtubeUrl}
+                        controls
+                        preload="metadata"
+                    />
+                ) : videoId ? (
                     <iframe
                         ref={playerRef}
                         width="100%"
