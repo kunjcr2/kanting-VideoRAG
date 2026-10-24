@@ -2,7 +2,7 @@ import { VIDEO_STATES } from '../../store/useStore'
 import { Clock, Tag, FileText, CheckCircle, Loader2 } from 'lucide-react'
 
 function VideoOverview({ video }) {
-    const { state, summary, youtubeUrl, addedAt } = video
+    const { state, summary, addedAt } = video
     const isReady = state.status === VIDEO_STATES.READY
     const isProcessing = [
         VIDEO_STATES.UPLOADING,

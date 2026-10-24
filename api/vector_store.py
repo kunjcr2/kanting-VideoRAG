@@ -9,13 +9,20 @@ import json
 import os
 import uuid
 from typing import List, Dict, Any, Optional
+
+# Keep native BLAS/tokenizer runtimes single-threaded on macOS. This avoids a
+# multiprocessing crash with Python 3.13 while retaining deterministic local runs.
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
 
 
 class VectorStore:
-    def __init__(self, storage_dir: str = "vector_data", device: str = "cuda"):
+    def __init__(self, storage_dir: str = None, device: str = None):
         """
         Initialize FAISS vector store.
         
@@ -23,7 +30,7 @@ class VectorStore:
             storage_dir: Directory to store index and metadata
             device: 'cuda' or 'cpu' for embedding model
         """
-        self.storage_dir = storage_dir
+        self.storage_dir = storage_dir or os.getenv("VECTOR_STORE_DIR", "vector_data")
         os.makedirs(storage_dir, exist_ok=True)
         
         # Paths
@@ -31,7 +38,8 @@ class VectorStore:
         self.metadata_path = os.path.join(storage_dir, "metadata.json")
         
         # Initialize embedding model
-        self.model = SentenceTransformer('all-MiniLM-L6-v2', device=device)
+        embedding_device = device or os.getenv("EMBEDDING_DEVICE", "cpu")
+        self.model = SentenceTransformer('all-MiniLM-L6-v2', device=embedding_device)
         self.embedding_dim = 384  # Dimension of all-MiniLM-L6-v2
         
         # Load or create FAISS index
@@ -215,6 +223,25 @@ class VectorStore:
             "total_segments": self.index.ntotal,
             "videos": list(self.metadata["videos"].keys())
         }
+
+    def get_videos(self) -> List[Dict]:
+        """Return indexed videos with their persisted transcript segments."""
+        videos = []
+        for video_id, info in self.metadata["videos"].items():
+            segments = [
+                {"id": index, "text": segment["text"], "start": segment["start"], "end": segment["end"]}
+                for index, segment in enumerate(self.metadata["segments"])
+                if segment.get("video_id") == video_id
+            ]
+            videos.append({
+                "id": video_id,
+                "title": info.get("title") or video_id,
+                "youtubeUrl": info.get("url"),
+                "videoPath": info.get("path"),
+                "summary": info.get("summary"),
+                "segments": segments,
+            })
+        return videos
     
     def clear(self):
         """Clear all data from the store."""

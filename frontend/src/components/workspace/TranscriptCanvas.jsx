@@ -7,19 +7,7 @@ function TranscriptCanvas({ video }) {
     const containerRef = useRef(null)
     const activeSegmentRef = useRef(null)
 
-    // Mock transcript segments (in real app, would come from video.transcript)
-    const mockTranscript = [
-        { id: 1, start: 0, end: 30, text: "Welcome to this video. Today we're going to explore some fascinating concepts in artificial intelligence and machine learning." },
-        { id: 2, start: 30, end: 60, text: "The transformer architecture has revolutionized the field of natural language processing since its introduction in 2017." },
-        { id: 3, start: 60, end: 90, text: "At its core, the transformer uses something called self-attention, which allows it to look at all parts of the input simultaneously." },
-        { id: 4, start: 90, end: 120, text: "This is different from previous models like RNNs and LSTMs, which processed sequences one element at a time." },
-        { id: 5, start: 120, end: 150, text: "The encoder takes the input sequence and creates a rich representation that captures the meaning and relationships between words." },
-        { id: 6, start: 150, end: 180, text: "The decoder then uses this encoded representation to generate the output, one token at a time." },
-        { id: 7, start: 180, end: 210, text: "Attention mechanisms are the key innovation. They allow the model to focus on relevant parts of the input when producing each output." },
-        { id: 8, start: 210, end: 240, text: "This attention is learned during training, so the model discovers what information is important for each task." },
-    ]
-
-    const transcript = video?.transcript || mockTranscript
+    const transcript = video?.transcript || []
 
     // Check if a segment is highlighted (from query results)
     const isHighlighted = (segment) => {
@@ -72,7 +60,9 @@ function TranscriptCanvas({ video }) {
                 ref={containerRef}
                 className="max-h-96 overflow-y-auto p-4 space-y-1"
             >
-                {transcript.map((segment) => {
+                {transcript.length === 0 ? (
+                    <p className="p-4 text-sm text-neutral-500">No transcript is available yet.</p>
+                ) : transcript.map((segment) => {
                     const active = isActive(segment)
                     const highlighted = isHighlighted(segment)
 

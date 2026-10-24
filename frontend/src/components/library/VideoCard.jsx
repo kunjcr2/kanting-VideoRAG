@@ -3,7 +3,7 @@ import { VIDEO_STATES } from '../../store/useStore'
 import IngestionProgress from './IngestionProgress'
 
 function VideoCard({ video, isActive, onClick }) {
-    const { state, title, youtubeUrl, addedAt } = video
+    const { state, title, youtubeUrl } = video
     const isProcessing = [
         VIDEO_STATES.UPLOADING,
         VIDEO_STATES.TRANSCRIBING,

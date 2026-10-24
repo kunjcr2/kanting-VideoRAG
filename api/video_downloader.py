@@ -1,11 +1,13 @@
 import yt_dlp
 import os
+import glob
 from urllib.parse import urlparse, parse_qs
 
 class VideoDownloader:
-    def __init__(self, download_dir="videos"):
-        self.download_dir = download_dir
-        os.makedirs(download_dir, exist_ok=True)
+    def __init__(self, download_dir=None):
+        self.download_dir = download_dir or os.getenv("VIDEO_DIR", "videos")
+        os.makedirs(self.download_dir, exist_ok=True)
+        self.last_error = None
     
     def download_video(self, url, video_name=None):
         """Download YouTube video"""
@@ -26,8 +28,10 @@ class VideoDownloader:
         # Remove any file extension if present in video_name
         video_name = os.path.splitext(video_name)[0]
         
+        self.last_error = None
         ydl_opts = {
-            'format': 'best[height<=720]',
+            'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo+bestaudio/best',
+            'merge_output_format': 'mp4',
             'outtmpl': os.path.join(self.download_dir, f'{video_name}.%(ext)s'),
             'quiet': False,
             'no_warnings': False,
@@ -37,17 +41,19 @@ class VideoDownloader:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 print(f"Downloading from: {url}")
                 info = ydl.extract_info(url, download=True)
-                video_path = ydl.prepare_filename(info)
-                print(f"Downloaded: {video_path}")
-                
-                # Verify file exists
-                if os.path.exists(video_path):
+                expected_path = ydl.prepare_filename(info)
+                candidates = [expected_path]
+                candidates.extend(glob.glob(os.path.join(self.download_dir, f'{video_name}.*')))
+                video_path = next((path for path in candidates if os.path.isfile(path)), None)
+                if video_path:
+                    print(f"Downloaded: {video_path}")
                     return video_path
-                else:
-                    print(f"File not found after download: {video_path}")
-                    return None
+                self.last_error = "Download completed but no video file was found"
+                print(self.last_error)
+                return None
                     
         except Exception as e:
+            self.last_error = str(e)
             print(f"Download failed: {e}")
             import traceback
             traceback.print_exc()
